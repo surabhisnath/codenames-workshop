@@ -3,6 +3,8 @@
 from random import randint, sample, shuffle, seed
 from cnai import Spymaster, W2VAssoc
 from sys import argv
+import warnings
+warnings.simplefilter(action='ignore')
 
 row_col = 5
 BOARD_SIZE = row_col ** 2
@@ -53,7 +55,7 @@ def printBoard(selected,colors=None):
 
 #===============================================
 
-def runTrial():
+def make_board():
     #blue first
     colors = ['U']*9 + ['R']*8 + ['N']*7 + ['A']
 
@@ -70,12 +72,11 @@ def runTrial():
         word = selected[i]
         board[color].append(word)
 
-    m = Spymaster(W2VAssoc())
-    clue, combo = m.makeClue(board, True)
-    return selected, colors, board, clue, combo
+    return selected, colors, board
 
 if __name__ == "__main__":
-    s = randint(1,10000) #funny, but you can't GET seed from random
+    # s = randint(1,10000) #funny, but you can't GET seed from random
+    s = 123
     if len(argv) > 1:
         try:
             s = int(argv[1])
@@ -84,9 +85,12 @@ if __name__ == "__main__":
     seed(s)
     print("Seed:",s)
     
-    selected, colors, board, clue, combo = runTrial()
+    selected, colors, board = make_board()
     print()
     printBoard(selected)
+
+    m = Spymaster(W2VAssoc())
+    clue, combo = m.makeClue(board, True)
 
     print(clue)
     print()
@@ -96,4 +100,3 @@ if __name__ == "__main__":
     printBoard(selected, colors)
 
     print(", ".join(combo))
-

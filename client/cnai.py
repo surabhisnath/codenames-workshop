@@ -1,3 +1,4 @@
+from sympy import true
 import gensim
 import numpy as np
 from collections import defaultdict
@@ -6,15 +7,53 @@ from random import choice
 from re import sub
 from sys import argv
 import nltk
+import time
 from nltk.stem.snowball import SnowballStemmer
-
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
+import openai
+import os
+import warnings
+warnings.simplefilter(action='ignore')
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 #========================================
 #HELPERS
 
 VERB = False
-
 stemmer = SnowballStemmer(language='english')
+openai.api_key = os.environ.get("OPENAI_API_KEY")
+
+# ---------------------- Surabhi adding code here ----------------------
+
+word_to_embedding = {}
+
+def get_sentence_transformer_embeddings(texts):
+    """Extracts Text Embeddings using SentenceTransformer (model: gte-large)
+    Args:
+        texts (list): List of texts
+    Returns:
+        dict: Text and corresponding embedding
+    """
+    model = SentenceTransformer('thenlper/gte-large')
+    embeddings = model.encode(texts)
+    embeddings = embeddings / np.linalg.norm(embeddings, axis=1, keepdims=True)       # normalise embeddings
+    return dict(zip(texts, embeddings))
+
+def calculate_cosine_similarity(embedding1, embedding2):
+    """Calculates cosine similarity between two embeddings
+    Args:
+        embedding1: first embedding
+        embedding2: second embedding
+    Returns:
+        cosine similarity
+    """
+    if np.any(embedding1) and np.any(embedding2):
+        return np.dot(embedding1, embedding2)
+    else:
+        return 0
+
+# ----------------------------------------------------------------------
 
 def powerset(iterable, rng=range(2,4)): #range(2-5) instead?
     s = list(iterable)
@@ -67,7 +106,7 @@ class Guesser:
     
     #clue is (word,num) tuple
     def newClue(self, clue):
-        self.clues.append(clue)
+        self.clues.append(clue[0])
         self.num_guesses = 0
     
     #returns one of the words from choices as the guess (not board, just list of possible words)
@@ -186,6 +225,24 @@ class W2VAssoc(Assoc):
 class Spymaster:
     def __init__(self, assoc):
         self.assoc = assoc #subclass of Assoc class
+
+    def gpt_call(self, prompt: str) -> str:
+        '''
+        Calls OPENAI API with input and system prompt.
+        '''
+
+        response = openai.OpenAI().chat.completions.create(
+            # model = "gpt-4-turbo-2024-04-09",
+            # model = "gpt-4o",
+            model = "gpt-3.5-turbo",
+            temperature = 0,
+            max_tokens = 512,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+
+        return response.choices[0].message.content
     
     class Combo:
         def __init__(self):
@@ -213,6 +270,54 @@ class Spymaster:
         #hacky, but w2v is picky about capitals
         neg = [self.assoc.preprocess(w) for w in neg]
         pos = [self.assoc.preprocess(w) for w in pos]
+
+        # ---------------------- Surabhi adding code here ----------------------
+
+        global word_to_embedding
+
+        if not word_to_embedding:
+            word_to_embedding = get_sentence_transformer_embeddings(pos + neg)
+        
+        flag = False
+        pow_set = powerset(pos)
+        max_sim = -9999
+        best_combo = []
+        for combo in pow_set:
+            cosine_sim_matrix = cosine_similarity([word_to_embedding[word] for word in combo])
+            triu_indices = np.triu_indices_from(cosine_sim_matrix, k=1)
+            upper_tri_values = cosine_sim_matrix[triu_indices]
+            mean_sim = np.mean(upper_tri_values)
+            if mean_sim + 0.003 >= max_sim:
+                for c in combo:
+                    for n in neg:
+                        if calculate_cosine_similarity(word_to_embedding[c], word_to_embedding[n]) >= 0.85:
+                            flag = True
+                            break
+                    if flag:
+                        break
+                if flag:
+                    continue
+                max_sim = mean_sim
+                best_combo = combo
+        
+        # print(best_combo, max_sim)
+
+        prompt = "give a word as a hint for the words: " + str(best_combo)[1:-1]
+
+        response = pos[0]
+        while response in pos + neg:
+            try:
+                response = self.gpt_call(prompt)
+            except Exception as e: 
+                print("Error:", e)
+                response = 'NA'
+        # print("Response:", response)
+        
+        time.sleep(1)
+        return (response, len(best_combo)), best_combo
+        
+        '''
+        # ----------------------------------------------------------------------
         
         #Game AI approach:
         #1. find combo with highest avg clue similarity (hyp: most likely to be closest related combo)
@@ -257,8 +362,7 @@ class Spymaster:
         
         if VERB: print("mH max_combo:",max_combo) #DEBUG
         return (combos[max_combo].max_clue, len(max_combo)), max_combo
-
-
+        '''
 
 #** Instantiate your AI here! ********
 
