@@ -232,9 +232,9 @@ class Spymaster:
         '''
 
         response = openai.OpenAI().chat.completions.create(
-            # model = "gpt-4-turbo-2024-04-09",
+            model = "gpt-4-turbo-2024-04-09",
             # model = "gpt-4o",
-            model = "gpt-3.5-turbo",
+            # model = "gpt-3.5-turbo",
             temperature = 0,
             max_tokens = 512,
             messages=[
@@ -316,9 +316,9 @@ class Spymaster:
         time.sleep(1)
         return (response, len(best_combo)), best_combo
         
-        '''
         # ----------------------------------------------------------------------
         
+        '''
         #Game AI approach:
         #1. find combo with highest avg clue similarity (hyp: most likely to be closest related combo)
         #2. pick the highest-scoring clue for that combo as our clue (# is just len of combo ofc)
